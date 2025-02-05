@@ -2,6 +2,7 @@ import tkinter as tk
 from tkinter import filedialog, Label, messagebox, Frame
 from tkinter import ttk  
 from PIL import Image, ImageTk
+import sqlite3
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
@@ -47,10 +48,33 @@ transform = transforms.Compose([
     transforms.Normalize(mean=[0.5], std=[0.5])
 ])
 
+# Initialize SQLite database
+conn = sqlite3.connect("xray_results.db")
+cursor = conn.cursor()
+cursor.execute("""
+    CREATE TABLE IF NOT EXISTS classifications (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        file_path TEXT,
+        prediction TEXT
+    )
+""")
+conn.commit()
+
+# Function to save result in database
+def save_to_database():
+    if file_path and prediction_result:
+        cursor.execute("INSERT INTO classifications (file_path, prediction) VALUES (?, ?)", 
+                       (file_path, prediction_result))
+        conn.commit()
+        messagebox.showinfo("Success", "Classification saved to database!")
+    else:
+        messagebox.showerror("Error", "No classification to save!")
+
 # Function to classify the image
-def classify_image(file_path):
+def classify_image(selected_file):
+    global file_path, prediction_result
     try:
-        image = Image.open(file_path)
+        image = Image.open(selected_file)
         image = transform(image).unsqueeze(0).to(device)
 
         with torch.no_grad():
@@ -59,13 +83,18 @@ def classify_image(file_path):
             label = predicted.item()
 
         label_map = {0: "Normal", 1: "Pneumonia"}
-        result_label.config(text=f"Predicted Class: {label_map[label]}", foreground="white", background="#212121")
+        prediction_result = label_map[label]
+        result_label.config(text=f"Predicted Class: {prediction_result}", foreground="white", background="#212121")
+
+        # Enable save button after classification
+        save_button.pack(pady=10, padx=20, fill="x")
     
     except Exception as e:
-        messagebox.showerror("Error", "Invalid image file!") 
+        messagebox.showerror("Error", "Invalid image file!")
 
 # Function to open file
 def open_file():
+    global file_path
     file_path = filedialog.askopenfilename(filetypes=[("Image Files", "*.png;*.jpg;*.jpeg")])
     if file_path:
         try:
@@ -99,13 +128,17 @@ upload_button = ttk.Button(left_frame, text="Upload X-Ray Image", command=open_f
 upload_button.pack(pady=10, padx=20, fill="x")
 upload_button.config(style="TButton")  # Apply custom style
 
+save_button = ttk.Button(left_frame, text="Save to Database", command=save_to_database)
+save_button.config(style="TButton")
+save_button.pack_forget()  # Initially hidden
+
+rec_button = ttk.Button(left_frame, text="Open Records", command=lambda: messagebox.showinfo("Records", "Feature not implemented yet"))
+rec_button.pack(pady=10, padx=20, fill="x")
+rec_button.config(style="TButton")
+
 exit_button = ttk.Button(left_frame, text="Exit", command=root.quit)
 exit_button.pack(pady=10, padx=20, fill="x")
 exit_button.config(style="TButton")
-
-rec_button = ttk.Button(left_frame, text="Open Records", command=root.quit)
-rec_button.pack(pady=10, padx=20, fill="x")
-rec_button.config(style="TButton")
 
 # Image Preview & Result Section (Right Side)
 img_label = Label(right_frame, bg="#303030", width=300, height=300)
@@ -116,6 +149,10 @@ result_label.pack(pady=10)
 
 # Custom Styles for Buttons
 style = ttk.Style()
-style.configure("TButton", font=("Arial", 10, "bold"), padding=10)
+style.configure("TButton", font=("Arial", 12, "bold"), padding=10)
+
+# Global Variables
+file_path = ""
+prediction_result = ""
 
 root.mainloop()
