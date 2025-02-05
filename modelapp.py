@@ -1,6 +1,6 @@
 import tkinter as tk
-from tkinter import filedialog, Label, messagebox
-from tkinter import ttk  # For themed widgets
+from tkinter import filedialog, Label, messagebox, Frame
+from tkinter import ttk  
 from PIL import Image, ImageTk
 import torch
 import torch.nn as nn
@@ -62,7 +62,7 @@ def classify_image(file_path):
         result_label.config(text=f"Predicted Class: {label_map[label]}", foreground="white", background="#212121")
     
     except Exception as e:
-        messagebox.showerror("Error", "Invalid image file!")
+        messagebox.showerror("Error", "Invalid image file!") 
 
 # Function to open file
 def open_file():
@@ -70,7 +70,7 @@ def open_file():
     if file_path:
         try:
             img = Image.open(file_path)
-            img.thumbnail((200, 200))
+            img = img.resize((300, 300))  # Bigger Preview
             img = ImageTk.PhotoImage(img)
             img_label.config(image=img)
             img_label.image = img
@@ -81,27 +81,41 @@ def open_file():
 # GUI Setup
 root = tk.Tk()
 root.title("X-Ray Sorter App")
-root.geometry("400x500")
-root.configure(bg="#212121")  # Dark theme
+root.geometry("800x400")  # Landscape Mode
+root.configure(bg="#212121")  
 
-# Title Label
-title_label = Label(root, text="X-Ray Sorter App", font=("Arial", 16, "bold"), fg="white", bg="#212121")
-title_label.pack(pady=10)
+# Layout Frames
+left_frame = Frame(root, bg="#212121", width=200)
+left_frame.pack(side="left", fill="y")
 
-# Image Label
-img_label = Label(root, bg="#303030")
-img_label.pack(pady=10)
+right_frame = Frame(root, bg="#303030", width=600)
+right_frame.pack(side="right", fill="both", expand=True)
 
-# Result Label
-result_label = Label(root, text="Prediction Result", font=("Arial", 12), fg="white", bg="#212121")
+# Buttons Section (Left Side)
+title_label = Label(left_frame, text="X-Ray Sorter", font=("Arial", 16, "bold"), fg="white", bg="#212121")
+title_label.pack(pady=20)
+
+upload_button = ttk.Button(left_frame, text="Upload X-Ray Image", command=open_file)
+upload_button.pack(pady=10, padx=20, fill="x")
+upload_button.config(style="TButton")  # Apply custom style
+
+exit_button = ttk.Button(left_frame, text="Exit", command=root.quit)
+exit_button.pack(pady=10, padx=20, fill="x")
+exit_button.config(style="TButton")
+
+rec_button = ttk.Button(left_frame, text="Open Records", command=root.quit)
+rec_button.pack(pady=10, padx=20, fill="x")
+rec_button.config(style="TButton")
+
+# Image Preview & Result Section (Right Side)
+img_label = Label(right_frame, bg="#303030", width=300, height=300)
+img_label.pack(pady=20)
+
+result_label = Label(right_frame, text="Prediction Result", font=("Arial", 12), fg="white", bg="#303030")
 result_label.pack(pady=10)
 
-# Upload Button with Styling
-upload_button = ttk.Button(root, text="Upload X-Ray Image", command=open_file)
-upload_button.pack(pady=10)
-
-# Exit Button
-exit_button = ttk.Button(root, text="Exit", command=root.quit)
-exit_button.pack(pady=10)
+# Custom Styles for Buttons
+style = ttk.Style()
+style.configure("TButton", font=("Arial", 10, "bold"), padding=10)
 
 root.mainloop()
