@@ -9,7 +9,7 @@ import torch.nn.functional as F
 from torchvision import transforms
 from datetime import datetime
 
-# Define the model
+# Define the updated model
 class XRaySorterModel(nn.Module):
     def __init__(self):
         super(XRaySorterModel, self).__init__()
@@ -20,7 +20,7 @@ class XRaySorterModel(nn.Module):
         
         self.fc1 = nn.Linear(128 * 28 * 28, 512)
         self.fc2 = nn.Linear(512, 128)
-        self.fc3 = nn.Linear(128, 2)
+        self.fc3 = nn.Linear(128, 3)  # Updated for 3 classes
         self.dropout = nn.Dropout(0.5)
 
     def forward(self, x):
@@ -91,7 +91,7 @@ def classify_image(selected_file):
             _, predicted = torch.max(output, 1)
             label = predicted.item()
         
-        label_map = {0: "Normal", 1: "Pneumonia"}
+        label_map = {0: "Normal", 1: "Pneumonia", 2: "Tuberculosis"}  # Updated for 3 classes
         prediction_result = label_map[label]
         result_label.config(text=f"Predicted Class: {prediction_result}", fg="white", bg="#212121")
         
@@ -141,15 +141,12 @@ title_label.pack(pady=20)
 
 upload_button = ttk.Button(left_frame, text="Upload X-Ray Image", command=open_file)
 upload_button.pack(pady=10, padx=20, fill="x")
-upload_button.config(style="TButton")
 
 save_button = ttk.Button(left_frame, text="Save to Database", command=save_to_database)
 save_button.pack_forget()
-save_button.config(style="TButton")
 
 exit_button = ttk.Button(left_frame, text="Exit", command=root.quit)
 exit_button.pack(pady=10, padx=20, fill="x")
-exit_button.config(style="TButton")
 
 # Image Preview Section
 img_label = Label(middle_frame, bg="#303030", width=300, height=300)
