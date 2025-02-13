@@ -1,5 +1,5 @@
 import tkinter as tk
-from tkinter import filedialog, Label, messagebox, Frame
+from tkinter import filedialog, Label, messagebox, Frame, Entry, StringVar
 from tkinter import ttk
 from PIL import Image, ImageTk
 import sqlite3
@@ -7,6 +7,7 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 from torchvision import transforms
+from datetime import datetime
 
 # Define the model
 class XRaySorterModel(nn.Module):
@@ -55,7 +56,11 @@ cursor.execute("""
     CREATE TABLE IF NOT EXISTS classifications (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
         file_path TEXT,
-        prediction TEXT
+        prediction TEXT,
+        patient_name TEXT,
+        age INTEGER,
+        disease TEXT,
+        test_time DATETIME
     )
 """)
 conn.commit()
@@ -124,14 +129,38 @@ def classify_image(file_path):
     # Class prediction logic (assuming 0: 'Normal', 1: 'Pneumonia', 2: 'Tuberculosis')
     categories = ["Normal", "Pneumonia", "Tuberculosis"]
     predicted_class = categories[predicted.item()]
-    save_to_db(file_path, predicted_class)
     result_label.config(text=f"Prediction: {predicted_class}")
+    disease_var.set(predicted_class)  # Automatically set the disease field
     update_dashboard()  # Update the dashboard after classifying
 
 # Save result to database
-def save_to_db(file_path, prediction):
-    cursor.execute("INSERT INTO classifications (file_path, prediction) VALUES (?, ?)", (file_path, prediction))
+def save_to_db(patient_name, age, disease, test_time):
+    cursor.execute("INSERT INTO classifications (file_path, prediction, patient_name, age, disease, test_time) VALUES (?, ?, ?, ?, ?, ?)", 
+                   (file_path, disease, patient_name, age, disease, test_time))
     conn.commit()
+    messagebox.showinfo("Success", "Test details saved successfully!")
+
+# Function to handle saving the test details
+def save_details():
+    patient_name = patient_name_var.get()
+    age = age_var.get()
+    disease = disease_var.get()
+    test_time = datetime.now()  # Get current date and time
+
+    if patient_name and age and disease:
+        save_to_db(patient_name, age, disease, test_time)
+    else:
+        messagebox.showwarning("Warning", "Please fill all fields!")
+
+# Function to clear all input fields and image
+# Function to clear all input fields, image, and result label
+def clear_data():
+    img_label.config(image=None)  # Clear the image
+    img_label.image = None  # Remove reference to the image
+    patient_name_var.set("")  # Clear patient name
+    age_var.set("")  # Clear age
+    disease_var.set("")  # Clear disease
+    result_label.config(text="Prediction Result")  # Clear the result label
 
 # Main GUI Setup
 root = tk.Tk()
@@ -213,6 +242,29 @@ img_label.pack(pady=(20, 10))  # Add padding to the top and bottom
 
 result_label = Label(sorter_frame, text="Prediction Result", font=("Arial", 12), fg="white", bg="#303030")
 result_label.pack(pady=10)
+
+# Create input fields for patient details
+patient_name_var = StringVar()
+age_var = StringVar()
+disease_var = StringVar()
+
+# Patient Name
+Label(sorter_frame, text="Patient Name:", bg="#303030", fg="white").pack(pady=5)
+Entry(sorter_frame, textvariable=patient_name_var).pack(pady=5)
+
+# Age
+Label(sorter_frame, text="Age:", bg="#303030", fg="white").pack(pady=5)
+Entry(sorter_frame, textvariable=age_var).pack(pady=5)
+
+# Disease (Auto-filled)
+Label(sorter_frame, text="Disease:", bg="#303030", fg="white").pack(pady=5)
+Entry(sorter_frame, textvariable=disease_var, state='readonly').pack(pady=5)  # Make it read-only
+
+# Save Button
+ttk.Button(sorter_frame, text="Save Test Details", command=save_details, style="Bold.TButton").pack(pady=10)
+
+# Clear Data Button
+ttk.Button(sorter_frame, text="Clear Data", command=clear_data, style="Bold.TButton").pack(pady=10)
 
 # Initially show the dashboard
 show_page("dashboard")
