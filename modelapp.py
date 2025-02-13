@@ -1,71 +1,14 @@
 import tkinter as tk
-from tkinter import filedialog, Label, messagebox, Frame, Entry
-from tkinter import ttk  
+from tkinter import filedialog, Label, messagebox, Frame
+from tkinter import ttk
 from PIL import Image, ImageTk
-import mysql.connector
+import sqlite3
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
 from torchvision import transforms
-from datetime import datetime
 
-# MySQL Connection Setup
-def connect_db():
-    return mysql.connector.connect(
-        host="localhost", 
-        user="root", 
-        password="",  # Update with your MySQL password if needed
-        database="xraysorter"
-    )
-
-def initialize_database():
-    conn = connect_db()
-    cursor = conn.cursor()
-    
-    cursor.execute("""
-        CREATE TABLE IF NOT EXISTS disease (
-            id INT AUTO_INCREMENT PRIMARY KEY,
-            name VARCHAR(50) UNIQUE
-        )
-    """)
-    
-    cursor.execute("""
-        CREATE TABLE IF NOT EXISTS patient_data (
-            id INT AUTO_INCREMENT PRIMARY KEY,
-            name VARCHAR(255),
-            age INT,
-            disease VARCHAR(50),
-            date_time DATETIME,
-            FOREIGN KEY (disease) REFERENCES disease(name)
-        )
-    """)
-    
-    cursor.execute("""
-        CREATE TABLE IF NOT EXISTS summary (
-            id INT AUTO_INCREMENT PRIMARY KEY,
-            total_tests INT DEFAULT 0,
-            total_pneumonia INT DEFAULT 0,
-            total_tuberculosis INT DEFAULT 0,
-            total_normal INT DEFAULT 0
-        )
-    """)
-    
-    # Insert disease categories if not exists
-    for disease in ["Normal", "Pneumonia", "Tuberculosis"]:
-        cursor.execute("INSERT IGNORE INTO disease (name) VALUES (%s)", (disease,))
-    
-    # Ensure summary table has one row
-    cursor.execute("SELECT COUNT(*) FROM summary")
-    if cursor.fetchone()[0] == 0:
-        cursor.execute("INSERT INTO summary (total_tests, total_pneumonia, total_tuberculosis, total_normal) VALUES (0, 0, 0, 0)")
-    
-    conn.commit()
-    cursor.close()
-    conn.close()
-
-initialize_database()
-
-# Define CNN Model
+# Define the model
 class XRaySorterModel(nn.Module):
     def __init__(self):
         super(XRaySorterModel, self).__init__()
@@ -76,7 +19,7 @@ class XRaySorterModel(nn.Module):
         
         self.fc1 = nn.Linear(128 * 28 * 28, 512)
         self.fc2 = nn.Linear(512, 128)
-        self.fc3 = nn.Linear(128, 3)  # 3 classes
+        self.fc3 = nn.Linear(128, 3)
         self.dropout = nn.Dropout(0.5)
 
     def forward(self, x):
@@ -105,75 +48,174 @@ transform = transforms.Compose([
     transforms.Normalize(mean=[0.5], std=[0.5])
 ])
 
-# Function to save result in database
-def save_to_database():
-    global prediction_result
-    name = name_entry.get()
-    age = age_entry.get()
-    timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-    
-    if not name or not age:
-        messagebox.showerror("Error", "Please fill in all fields!")
-        return
-    
-    conn = connect_db()
-    cursor = conn.cursor()
-    cursor.execute("INSERT INTO patient_data (name, age, disease, date_time) VALUES (%s, %s, %s, %s)",
-                   (name, age, prediction_result, timestamp))
-    cursor.execute("UPDATE summary SET total_tests = total_tests + 1, "
-                   f"total_{prediction_result.lower()} = total_{prediction_result.lower()} + 1")
-    conn.commit()
-    cursor.close()
-    conn.close()
-    messagebox.showinfo("Success", "Classification and patient data saved!")
+# Initialize SQLite database
+conn = sqlite3.connect("xray_results.db")
+cursor = conn.cursor()
+cursor.execute("""
+    CREATE TABLE IF NOT EXISTS classifications (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        file_path TEXT,
+        prediction TEXT
+    )
+""")
+conn.commit()
 
-def classify_image(selected_file):
-    global prediction_result
-    try:
-        image = Image.open(selected_file)
-        image = transform(image).unsqueeze(0).to(device)
-        
-        with torch.no_grad():
-            output = model(image)
-            _, predicted = torch.max(output, 1)
-            label = predicted.item()
-        
-        label_map = {0: "Normal", 1: "Pneumonia", 2: "Tuberculosis"}
-        prediction_result = label_map[label]
-        result_label.config(text=f"Predicted Class: {prediction_result}", fg="white", bg="#212121")
-        save_button.pack(pady=10, padx=20, fill="x")
-        patient_form.pack(pady=10)
-        prediction_entry.delete(0, tk.END)
-        prediction_entry.insert(0, prediction_result)
-        timestamp_label.config(text=f"Timestamp: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
-    except Exception as e:
-        messagebox.showerror("Error", "Invalid image file!")
+# Function to switch pages and update the label
+def show_page(page):
+    # Hide all frames before showing the selected page
+    if page == "dashboard":
+        sorter_frame.pack_forget()
+        dashboard_frame.pack(fill="both", expand=True)
+        update_page_label("Dashboard")  # Update the page label
+        change_sidebar_buttons("dashboard")
+        analytics_frame.pack(fill="both", expand=True)  # Show analytics section
+    elif page == "sorter":
+        dashboard_frame.pack_forget()
+        sorter_frame.pack(fill="both", expand=True)
+        update_page_label("Sorter")  # Update the page label
+        change_sidebar_buttons("sorter")
+        analytics_frame.pack_forget()  # Hide analytics section when on sorter page
 
+# Function to update the page label
+def update_page_label(page_name):
+    page_label.config(text=page_name)
+
+# Change sidebar buttons based on the page
+def change_sidebar_buttons(page):
+    # Clear existing sidebar buttons
+    for widget in sidebar.winfo_children():
+        if isinstance(widget, ttk.Button):
+            widget.destroy()
+    
+    # Add buttons based on the selected page
+    if page == "dashboard":
+        ttk.Button(sidebar, text="Dashboard", command=lambda: show_page("dashboard"), style="Bold.TButton").pack(pady=10, padx=20, fill="x")
+        ttk.Button(sidebar, text="Sorter", command=lambda: show_page("sorter"), style="Bold.TButton").pack(pady=10, padx=20, fill="x")
+    elif page == "sorter":
+        ttk.Button(sidebar, text="Upload X-ray Image", command=open_file, style="Bold.TButton").pack(pady=10, padx=20, fill="x")
+        ttk.Button(sidebar, text="Dashboard", command=lambda: show_page("dashboard"), style="Bold.TButton").pack(pady=10, padx=20, fill="x")
+        ttk.Button(sidebar, text="Exit", command=root.quit, style="Bold.TButton").pack(pady=10, padx=20, fill="x")
+
+# Function to open and display X-ray image and predict
 def open_file():
+    global file_path
     file_path = filedialog.askopenfilename(filetypes=[("Image Files", "*.png;*.jpg;*.jpeg")])
     if file_path:
         try:
-            img = Image.open(file_path).resize((300, 300))
+            img = Image.open(file_path)
+            img = img.resize((300, 300))
             img = ImageTk.PhotoImage(img)
             img_label.config(image=img)
             img_label.image = img
-            classify_image(file_path)
+            result_label.config(text="Processing...")
+            classify_image(file_path)  # Classify image after displaying
         except:
             messagebox.showerror("Error", "Unable to open image!")
 
-# GUI Setup
+# Function to classify image
+def classify_image(file_path):
+    image = Image.open(file_path)
+    image = transform(image).unsqueeze(0).to(device)
+    
+    with torch.no_grad():
+        outputs = model(image)
+        _, predicted = torch.max(outputs, 1)
+    
+    # Class prediction logic (assuming 0: 'Normal', 1: 'Pneumonia', 2: 'Tuberculosis')
+    categories = ["Normal", "Pneumonia", "Tuberculosis"]
+    predicted_class = categories[predicted.item()]
+    save_to_db(file_path, predicted_class)
+    result_label.config(text=f"Prediction: {predicted_class}")
+    update_dashboard()  # Update the dashboard after classifying
+
+# Save result to database
+def save_to_db(file_path, prediction):
+    cursor.execute("INSERT INTO classifications (file_path, prediction) VALUES (?, ?)", (file_path, prediction))
+    conn.commit()
+
+# Main GUI Setup
 root = tk.Tk()
 root.title("X-Ray Sorter App")
-root.geometry("1000x400")  
-root.configure(bg="#212121")  
+root.geometry("800x400")
+root.configure(bg="#212121")
 
-left_frame = Frame(root, bg="#212121", width=200)
-left_frame.pack(side="left", fill="y")
+# Sidebar
+sidebar = Frame(root, bg="#212121", width=200)
+sidebar.pack(side="left", fill="y")
 
-upload_button = ttk.Button(left_frame, text="Upload X-Ray Image", command=open_file)
-upload_button.pack(pady=10, padx=20, fill="x")
+title_label = Label(sidebar, text="X-Ray Sorter", font=("Arial", 16, "bold"), fg="white", bg="#212121")
+title_label.pack(pady=20)
 
-save_button = ttk.Button(left_frame, text="Save to Database", command=save_to_database)
-save_button.pack_forget()
+# Set the style for bold text
+style = ttk.Style()
+style.configure("Bold.TButton", font=("Arial", 12, "bold"))
 
+# Page Label (this will show which page is active)
+page_label = Label(root, text="Dashboard", font=("Arial", 14, "bold"), fg="white", bg="#212121")
+page_label.pack(pady=20)
+
+# Container for main content (Dashboard or Sorter)
+dashboard_container = Frame(root, bg="#303030", width=600, height=400)
+dashboard_container.pack(fill="both", expand=True)
+
+# Define the frames globally
+dashboard_frame = Frame(dashboard_container, bg="#303030")
+sorter_frame = Frame(dashboard_container, bg="#303030")
+
+# Dashboard UI
+dashboard_frame.pack(pady=20)
+
+# Analytics Section (Only on Dashboard)
+analytics_frame = Frame(dashboard_container, bg="#303030")
+analytics_frame.pack_forget()  # Initially hide the analytics section
+
+# Statistics Section
+stats_frame = Frame(analytics_frame, bg="#303030")
+stats_frame.pack(pady=10, fill="both", expand=True)
+
+# Function to fetch statistics
+def get_statistics():
+    cursor.execute("SELECT COUNT(*) FROM classifications")
+    total_tests = cursor.fetchone()[0]
+    cursor.execute("SELECT COUNT(*) FROM classifications WHERE prediction = 'Pneumonia'")
+    pneumonia_count = cursor.fetchone()[0]
+    cursor.execute("SELECT COUNT(*) FROM classifications WHERE prediction = 'Tuberculosis'")
+    tuberculosis_count = cursor.fetchone()[0]
+    return total_tests, pneumonia_count, tuberculosis_count
+
+def update_dashboard():
+    total_tests, pneumonia_count, tuberculosis_count = get_statistics()
+    
+    # Clear existing statistics labels before updating
+    for widget in stats_frame.winfo_children():
+        widget.destroy()
+    
+    stats = [
+        ("Total Tests Conducted", total_tests),
+        ("Pneumonia Cases", pneumonia_count),
+        ("Tuberculosis Cases", tuberculosis_count)
+    ]
+    
+    # Center the statistics section
+    for stat in stats:
+        stat_frame = Frame(stats_frame, bg="#424242", width=180, height=100, padx=10, pady=10)
+        stat_frame.pack(side="top", padx=10, pady=10, anchor="center")  # Center the stat frame
+        
+        Label(stat_frame, text=stat[0], font=("Arial", 12), fg="white", bg="#424242").pack()
+        Label(stat_frame, text=stat[1], font=("Arial", 16, "bold"), fg="white", bg="#424242").pack()
+
+# Update the dashboard to show the analytics
+update_dashboard()
+
+# Sorter Section (X-ray image preview and result)
+img_label = Label(sorter_frame, bg="#303030", width=300, height=300)
+img_label.pack(pady=(20, 10))  # Add padding to the top and bottom
+
+result_label = Label(sorter_frame, text="Prediction Result", font=("Arial", 12), fg="white", bg="#303030")
+result_label.pack(pady=10)
+
+# Initially show the dashboard
+show_page("dashboard")
+
+# Run the application
 root.mainloop()
