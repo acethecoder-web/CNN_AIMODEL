@@ -20,7 +20,7 @@ class XRaySorterModel(nn.Module):
         
         self.fc1 = nn.Linear(128 * 28 * 28, 512)
         self.fc2 = nn.Linear(512, 128)
-        self.fc3 = nn.Linear(128, 3)
+        self.fc3 = nn.Linear(128, 4)  # Change from 3 to 4 for the new category
         self.dropout = nn.Dropout(0.5)
 
     def forward(self, x):
@@ -38,7 +38,7 @@ class XRaySorterModel(nn.Module):
 # Load model
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 model = XRaySorterModel().to(device)
-model.load_state_dict(torch.load("./aimodel.pth", map_location=device))  
+model.load_state_dict(torch.load("./efficientnet_xray.pth", map_location=device))  
 model.eval()
 
 # Define image transformations
@@ -66,6 +66,7 @@ cursor.execute("""
 conn.commit()
 
 # Function to switch pages and update the label
+
 def show_page(page):
     # Hide all frames before showing the selected page
     if page == "dashboard":
@@ -126,8 +127,8 @@ def classify_image(file_path):
         outputs = model(image)
         _, predicted = torch.max(outputs, 1)
     
-    # Class prediction logic (assuming 0: 'Normal', 1: 'Pneumonia', 2: 'Tuberculosis')
-    categories = ["Normal", "Pneumonia", "Tuberculosis"]
+    # Class prediction logic (0: 'Normal', 1: 'Pneumonia', 2: 'Tuberculosis', 3: 'Not an X-ray')
+    categories = ["Normal", "Pneumonia", "Tuberculosis", "Not an X-ray"]
     predicted_class = categories[predicted.item()]
     result_label.config(text=f"Prediction: {predicted_class}")
     disease_var.set(predicted_class)  # Automatically set the disease field
@@ -153,7 +154,6 @@ def save_details():
         messagebox.showwarning("Warning", "Please fill all fields!")
 
 # Function to clear all input fields and image
-# Function to clear all input fields, image, and result label
 def clear_data():
     img_label.config(image=None)  # Clear the image
     img_label.image = None  # Remove reference to the image
@@ -210,10 +210,12 @@ def get_statistics():
     pneumonia_count = cursor.fetchone()[0]
     cursor.execute("SELECT COUNT(*) FROM classifications WHERE prediction = 'Tuberculosis'")
     tuberculosis_count = cursor.fetchone()[0]
-    return total_tests, pneumonia_count, tuberculosis_count
+    cursor.execute("SELECT COUNT(*) FROM classifications WHERE prediction = 'Not an X-ray'")
+    not_xray_count = cursor.fetchone()[0]  # New count for 'Not an X-ray'
+    return total_tests, pneumonia_count, tuberculosis_count, not_xray_count
 
 def update_dashboard():
-    total_tests, pneumonia_count, tuberculosis_count = get_statistics()
+    total_tests, pneumonia_count, tuberculosis_count, not_xray_count = get_statistics()
     
     # Clear existing statistics labels before updating
     for widget in stats_frame.winfo_children():
@@ -222,7 +224,8 @@ def update_dashboard():
     stats = [
         ("Total Tests Conducted", total_tests),
         ("Pneumonia Cases", pneumonia_count),
-        ("Tuberculosis Cases", tuberculosis_count)
+        ("Tuberculosis Cases", tuberculosis_count),
+        ("Not an X-ray Cases", not_xray_count)  # New statistic
     ]
     
     # Center the statistics section
