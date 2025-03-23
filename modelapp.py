@@ -91,6 +91,7 @@ def change_sidebar_buttons(page):
         ttk.Button(sidebar, text="Sorter", command=lambda: show_page("sorter"), style="Bold.TButton").pack(pady=10, padx=20, fill="x")
     elif page == "sorter":
         ttk.Button(sidebar, text="Upload X-ray Image", command=open_file, style="Bold.TButton").pack(pady=10, padx=20, fill="x")
+        ttk.Button(sidebar, text="Open Records", command=open_records, style="Bold.TButton").pack(pady=10, padx=20, fill="x")  # New button
         ttk.Button(sidebar, text="Dashboard", command=lambda: show_page("dashboard"), style="Bold.TButton").pack(pady=10, padx=20, fill="x")
         ttk.Button(sidebar, text="Toggle Theme", command=toggle_theme, style="Bold.TButton").pack(pady=10, padx=20, fill="x")
         ttk.Button(sidebar, text="Exit", command=root.quit, style="Bold.TButton").pack(pady=10, padx=20, fill="x")
@@ -181,6 +182,22 @@ def fade_in(widget, step=1):
     widget.configure(fg=new_color)
     if step < 255:
         widget.after(10, fade_in, widget, step + 1)
+
+# Function to open and display all records from the database
+def open_records():
+    cursor.execute("SELECT * FROM classifications")
+    records = cursor.fetchall()
+    
+    if records:
+        records_window = tk.Toplevel(root)
+        records_window.title("Records")
+        records_window.geometry("600x400")
+        
+        for record in records:
+            record_str = f"ID: {record[0]}, File Path: {record[1]}, Prediction: {record[2]}, Patient Name: {record[3]}, Age: {record[4]}, Disease: {record[5]}, Test Time: {record[6]}"
+            Label(records_window, text=record_str, bg=DARK_BG, fg=DARK_FG).pack(anchor="w", padx=10, pady=5)
+    else:
+        messagebox.showinfo("No Records", "No records found in the database.")
 
 # Main GUI Setup
 root = tk.Tk()
@@ -286,6 +303,9 @@ ttk.Button(sorter_frame, text="Save Test Details", command=save_details, style="
 
 # Clear Data Button
 ttk.Button(sorter_frame, text="Clear Data", command=clear_data, style="Bold.TButton").pack(pady=10)
+
+# Open Records Button
+ttk.Button(sorter_frame, text="Open Records", command=open_records, style="Bold.TButton").pack(pady=10)
 
 # Initially show the dashboard
 show_page("dashboard")
