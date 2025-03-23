@@ -5,35 +5,24 @@ from PIL import Image, ImageTk
 import sqlite3
 import torch
 import torch.nn as nn
-import torch.nn.functional as F
-from torchvision import transforms
+from torchvision import transforms, models
 from datetime import datetime
 
 # Define the model
 class XRaySorterModel(nn.Module):
     def __init__(self):
         super(XRaySorterModel, self).__init__()
-        self.conv1 = nn.Conv2d(1, 32, 3, 1, 1)
-        self.conv2 = nn.Conv2d(32, 64, 3, 1, 1)
-        self.conv3 = nn.Conv2d(64, 128, 3, 1, 1)
-        self.pool = nn.MaxPool2d(2, 2)
-        
-        self.fc1 = nn.Linear(128 * 28 * 28, 512)
-        self.fc2 = nn.Linear(512, 128)
-        self.fc3 = nn.Linear(128, 4)  # Change from 3 to 4 for the new category
-        self.dropout = nn.Dropout(0.5)
-
+        self.model = models.efficientnet_b0(weights=models.EfficientNet_B0_Weights.DEFAULT)
+        self.model.features[0][0] = nn.Conv2d(1, 32, kernel_size=3, stride=1, padding=1, bias=False)  # Modify first layer for grayscale
+        self.model.classifier = nn.Sequential(
+            nn.Linear(self.model.classifier[1].in_features, 128),
+            nn.ReLU(),
+            nn.Dropout(0.5),
+            nn.Linear(128, 4)  # 4 Classes: Normal, Pneumonia, Tuberculosis, Not an X-ray
+        )
+    
     def forward(self, x):
-        x = self.pool(F.relu(self.conv1(x)))  
-        x = self.pool(F.relu(self.conv2(x)))  
-        x = self.pool(F.relu(self.conv3(x)))  
-        x = x.view(-1, 128 * 28 * 28)  
-        x = F.relu(self.fc1(x))
-        x = self.dropout(x)
-        x = F.relu(self.fc2(x))
-        x = self.dropout(x)
-        x = self.fc3(x)
-        return x
+        return self.model(x)
 
 # Load model
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
@@ -66,21 +55,19 @@ cursor.execute("""
 conn.commit()
 
 # Function to switch pages and update the label
-
 def show_page(page):
-    # Hide all frames before showing the selected page
     if page == "dashboard":
         sorter_frame.pack_forget()
         dashboard_frame.pack(fill="both", expand=True)
-        update_page_label("Dashboard")  # Update the page label
+        update_page_label("Dashboard")
         change_sidebar_buttons("dashboard")
-        analytics_frame.pack(fill="both", expand=True)  # Show analytics section
+        analytics_frame.pack(fill="both", expand=True)
     elif page == "sorter":
         dashboard_frame.pack_forget()
         sorter_frame.pack(fill="both", expand=True)
-        update_page_label("Sorter")  # Update the page label
+        update_page_label("Sorter")
         change_sidebar_buttons("sorter")
-        analytics_frame.pack_forget()  # Hide analytics section when on sorter page
+        analytics_frame.pack_forget()
 
 # Function to update the page label
 def update_page_label(page_name):
@@ -88,12 +75,10 @@ def update_page_label(page_name):
 
 # Change sidebar buttons based on the page
 def change_sidebar_buttons(page):
-    # Clear existing sidebar buttons
     for widget in sidebar.winfo_children():
         if isinstance(widget, ttk.Button):
             widget.destroy()
     
-    # Add buttons based on the selected page
     if page == "dashboard":
         ttk.Button(sidebar, text="Dashboard", command=lambda: show_page("dashboard"), style="Bold.TButton").pack(pady=10, padx=20, fill="x")
         ttk.Button(sidebar, text="Sorter", command=lambda: show_page("sorter"), style="Bold.TButton").pack(pady=10, padx=20, fill="x")
@@ -114,25 +99,24 @@ def open_file():
             img_label.config(image=img)
             img_label.image = img
             result_label.config(text="Processing...")
-            classify_image(file_path)  # Classify image after displaying
+            classify_image(file_path)
         except:
             messagebox.showerror("Error", "Unable to open image!")
 
 # Function to classify image
 def classify_image(file_path):
-    image = Image.open(file_path)
+    image = Image.open(file_path).convert("L")  # Convert to grayscale
     image = transform(image).unsqueeze(0).to(device)
     
     with torch.no_grad():
         outputs = model(image)
         _, predicted = torch.max(outputs, 1)
     
-    # Class prediction logic (0: 'Normal', 1: 'Pneumonia', 2: 'Tuberculosis', 3: 'Not an X-ray')
     categories = ["Normal", "Pneumonia", "Tuberculosis", "Not an X-ray"]
     predicted_class = categories[predicted.item()]
     result_label.config(text=f"Prediction: {predicted_class}")
-    disease_var.set(predicted_class)  # Automatically set the disease field
-    update_dashboard()  # Update the dashboard after classifying
+    disease_var.set(predicted_class)
+    update_dashboard()
 
 # Save result to database
 def save_to_db(patient_name, age, disease, test_time):
@@ -146,7 +130,7 @@ def save_details():
     patient_name = patient_name_var.get()
     age = age_var.get()
     disease = disease_var.get()
-    test_time = datetime.now()  # Get current date and time
+    test_time = datetime.now()
 
     if patient_name and age and disease:
         save_to_db(patient_name, age, disease, test_time)
@@ -155,12 +139,12 @@ def save_details():
 
 # Function to clear all input fields and image
 def clear_data():
-    img_label.config(image=None)  # Clear the image
-    img_label.image = None  # Remove reference to the image
-    patient_name_var.set("")  # Clear patient name
-    age_var.set("")  # Clear age
-    disease_var.set("")  # Clear disease
-    result_label.config(text="Prediction Result")  # Clear the result label
+    img_label.config(image=None)
+    img_label.image = None
+    patient_name_var.set("")
+    age_var.set("")
+    disease_var.set("")
+    result_label.config(text="Prediction Result")
 
 # Main GUI Setup
 root = tk.Tk()
@@ -196,7 +180,7 @@ dashboard_frame.pack(pady=20)
 
 # Analytics Section (Only on Dashboard)
 analytics_frame = Frame(dashboard_container, bg="#303030")
-analytics_frame.pack_forget()  # Initially hide the analytics section
+analytics_frame.pack_forget()
 
 # Statistics Section
 stats_frame = Frame(analytics_frame, bg="#303030")
@@ -211,13 +195,12 @@ def get_statistics():
     cursor.execute("SELECT COUNT(*) FROM classifications WHERE prediction = 'Tuberculosis'")
     tuberculosis_count = cursor.fetchone()[0]
     cursor.execute("SELECT COUNT(*) FROM classifications WHERE prediction = 'Not an X-ray'")
-    not_xray_count = cursor.fetchone()[0]  # New count for 'Not an X-ray'
+    not_xray_count = cursor.fetchone()[0]
     return total_tests, pneumonia_count, tuberculosis_count, not_xray_count
 
 def update_dashboard():
     total_tests, pneumonia_count, tuberculosis_count, not_xray_count = get_statistics()
     
-    # Clear existing statistics labels before updating
     for widget in stats_frame.winfo_children():
         widget.destroy()
     
@@ -225,13 +208,12 @@ def update_dashboard():
         ("Total Tests Conducted", total_tests),
         ("Pneumonia Cases", pneumonia_count),
         ("Tuberculosis Cases", tuberculosis_count),
-        ("Not an X-ray Cases", not_xray_count)  # New statistic
+        ("Not an X-ray Cases", not_xray_count)
     ]
     
-    # Center the statistics section
     for stat in stats:
         stat_frame = Frame(stats_frame, bg="#424242", width=180, height=100, padx=10, pady=10)
-        stat_frame.pack(side="top", padx=10, pady=10, anchor="center")  # Center the stat frame
+        stat_frame.pack(side="top", padx=10, pady=10, anchor="center")
         
         Label(stat_frame, text=stat[0], font=("Arial", 12), fg="white", bg="#424242").pack()
         Label(stat_frame, text=stat[1], font=("Arial", 16, "bold"), fg="white", bg="#424242").pack()
@@ -241,7 +223,7 @@ update_dashboard()
 
 # Sorter Section (X-ray image preview and result)
 img_label = Label(sorter_frame, bg="#303030", width=300, height=300)
-img_label.pack(pady=(20, 10))  # Add padding to the top and bottom
+img_label.pack(pady=(20, 10))
 
 result_label = Label(sorter_frame, text="Prediction Result", font=("Arial", 12), fg="white", bg="#303030")
 result_label.pack(pady=10)
@@ -261,7 +243,7 @@ Entry(sorter_frame, textvariable=age_var).pack(pady=5)
 
 # Disease (Auto-filled)
 Label(sorter_frame, text="Disease:", bg="#303030", fg="white").pack(pady=5)
-Entry(sorter_frame, textvariable=disease_var, state='readonly').pack(pady=5)  # Make it read-only
+Entry(sorter_frame, textvariable=disease_var, state='readonly').pack(pady=5)
 
 # Save Button
 ttk.Button(sorter_frame, text="Save Test Details", command=save_details, style="Bold.TButton").pack(pady=10)
