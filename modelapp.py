@@ -8,6 +8,13 @@ import torch.nn as nn
 from torchvision import transforms, models
 from datetime import datetime
 
+# Color Variables
+DARK_BG = "#212121"
+DARK_FG = "white"
+LIGHT_BG = "#f0f0f0"
+LIGHT_FG = "black"
+current_theme = "dark"  # Default theme
+
 # Define the model
 class XRaySorterModel(nn.Module):
     def __init__(self):
@@ -85,7 +92,26 @@ def change_sidebar_buttons(page):
     elif page == "sorter":
         ttk.Button(sidebar, text="Upload X-ray Image", command=open_file, style="Bold.TButton").pack(pady=10, padx=20, fill="x")
         ttk.Button(sidebar, text="Dashboard", command=lambda: show_page("dashboard"), style="Bold.TButton").pack(pady=10, padx=20, fill="x")
+        ttk.Button(sidebar, text="Toggle Theme", command=toggle_theme, style="Bold.TButton").pack(pady=10, padx=20, fill="x")
         ttk.Button(sidebar, text="Exit", command=root.quit, style="Bold.TButton").pack(pady=10, padx=20, fill="x")
+
+# Function to toggle themes
+def toggle_theme():
+    global current_theme
+    if current_theme == "dark":
+        current_theme = "light"
+        root.configure(bg=LIGHT_BG)
+        sidebar.configure(bg=LIGHT_BG)
+        page_label.configure(bg=LIGHT_BG, fg=LIGHT_FG)
+        for widget in root.winfo_children():
+            widget.configure(bg=LIGHT_BG, fg=LIGHT_FG)
+    else:
+        current_theme = "dark"
+        root.configure(bg=DARK_BG)
+        sidebar.configure(bg=DARK_BG)
+        page_label.configure(bg=DARK_BG, fg=DARK_FG)
+        for widget in root.winfo_children():
+            widget.configure(bg=DARK_BG, fg=DARK_FG)
 
 # Function to open and display X-ray image and predict
 def open_file():
@@ -117,6 +143,7 @@ def classify_image(file_path):
     result_label.config(text=f"Prediction: {predicted_class}")
     disease_var.set(predicted_class)
     update_dashboard()
+    fade_in(result_label)
 
 # Save result to database
 def save_to_db(patient_name, age, disease, test_time):
@@ -146,17 +173,26 @@ def clear_data():
     disease_var.set("")
     result_label.config(text="Prediction Result")
 
+# Function to fade in the result label
+def fade_in(widget, step=1):
+    current_color = widget.cget("fg")
+    r, g, b = widget.winfo_rgb(current_color)
+    new_color = f'#{r//256:02x}{g//256:02x}{b//256:02x}'
+    widget.configure(fg=new_color)
+    if step < 255:
+        widget.after(10, fade_in, widget, step + 1)
+
 # Main GUI Setup
 root = tk.Tk()
 root.title("X-Ray Sorter App")
 root.geometry("800x400")
-root.configure(bg="#212121")
+root.configure(bg=DARK_BG)
 
 # Sidebar
-sidebar = Frame(root, bg="#212121", width=200)
+sidebar = Frame(root, bg=DARK_BG, width=200)
 sidebar.pack(side="left", fill="y")
 
-title_label = Label(sidebar, text="X-Ray Sorter", font=("Arial", 16, "bold"), fg="white", bg="#212121")
+title_label = Label(sidebar, text="X-Ray Sorter", font=("Arial", 16, "bold"), fg=DARK_FG, bg=DARK_BG)
 title_label.pack(pady=20)
 
 # Set the style for bold text
@@ -164,26 +200,26 @@ style = ttk.Style()
 style.configure("Bold.TButton", font=("Arial", 12, "bold"))
 
 # Page Label (this will show which page is active)
-page_label = Label(root, text="Dashboard", font=("Arial", 14, "bold"), fg="white", bg="#212121")
+page_label = Label(root, text="Dashboard", font=("Arial", 14, "bold"), fg=DARK_FG, bg=DARK_BG)
 page_label.pack(pady=20)
 
 # Container for main content (Dashboard or Sorter)
-dashboard_container = Frame(root, bg="#303030", width=600, height=400)
+dashboard_container = Frame(root, bg=DARK_BG, width=600, height=400)
 dashboard_container.pack(fill="both", expand=True)
 
 # Define the frames globally
-dashboard_frame = Frame(dashboard_container, bg="#303030")
-sorter_frame = Frame(dashboard_container, bg="#303030")
+dashboard_frame = Frame(dashboard_container, bg=DARK_BG)
+sorter_frame = Frame(dashboard_container, bg=DARK_BG)
 
 # Dashboard UI
 dashboard_frame.pack(pady=20)
 
 # Analytics Section (Only on Dashboard)
-analytics_frame = Frame(dashboard_container, bg="#303030")
+analytics_frame = Frame(dashboard_container, bg=DARK_BG)
 analytics_frame.pack_forget()
 
 # Statistics Section
-stats_frame = Frame(analytics_frame, bg="#303030")
+stats_frame = Frame(analytics_frame, bg=DARK_BG)
 stats_frame.pack(pady=10, fill="both", expand=True)
 
 # Function to fetch statistics
@@ -205,27 +241,27 @@ def update_dashboard():
         widget.destroy()
     
     stats = [
-        ("Total Tests Conducted", total_tests),
-        ("Pneumonia Cases", pneumonia_count),
-        ("Tuberculosis Cases", tuberculosis_count),
-        ("Not an X-ray Cases", not_xray_count)
+        ("Total Tests Conducted", total_tests, "#4CAF50"),
+        ("Pneumonia Cases", pneumonia_count, "#F44336"),
+        ("Tuberculosis Cases", tuberculosis_count, "#FF9800"),
+        ("Not an X-ray Cases", not_xray_count, "#2196F3")
     ]
     
     for stat in stats:
-        stat_frame = Frame(stats_frame, bg="#424242", width=180, height=100, padx=10, pady=10)
+        stat_frame = Frame(stats_frame, bg=stat[2], width=180, height=100, padx=10, pady=10)
         stat_frame.pack(side="top", padx=10, pady=10, anchor="center")
         
-        Label(stat_frame, text=stat[0], font=("Arial", 12), fg="white", bg="#424242").pack()
-        Label(stat_frame, text=stat[1], font=("Arial", 16, "bold"), fg="white", bg="#424242").pack()
+        Label(stat_frame, text=stat[0], font=("Arial", 12), fg="white", bg=stat[2]).pack()
+        Label(stat_frame, text=stat[1], font=("Arial", 16, "bold"), fg="white", bg=stat[2]).pack()
 
 # Update the dashboard to show the analytics
 update_dashboard()
 
 # Sorter Section (X-ray image preview and result)
-img_label = Label(sorter_frame, bg="#303030", width=300, height=300)
+img_label = Label(sorter_frame, bg=DARK_BG, width=300, height=300)
 img_label.pack(pady=(20, 10))
 
-result_label = Label(sorter_frame, text="Prediction Result", font=("Arial", 12), fg="white", bg="#303030")
+result_label = Label(sorter_frame, text="Prediction Result", font=("Arial", 12), fg=DARK_FG, bg=DARK_BG)
 result_label.pack(pady=10)
 
 # Create input fields for patient details
@@ -234,15 +270,15 @@ age_var = StringVar()
 disease_var = StringVar()
 
 # Patient Name
-Label(sorter_frame, text="Patient Name:", bg="#303030", fg="white").pack(pady=5)
+Label(sorter_frame, text="Patient Name:", bg=DARK_BG, fg=DARK_FG).pack(pady=5)
 Entry(sorter_frame, textvariable=patient_name_var).pack(pady=5)
 
 # Age
-Label(sorter_frame, text="Age:", bg="#303030", fg="white").pack(pady=5)
+Label(sorter_frame, text="Age:", bg=DARK_BG, fg=DARK_FG).pack(pady=5)
 Entry(sorter_frame, textvariable=age_var).pack(pady=5)
 
 # Disease (Auto-filled)
-Label(sorter_frame, text="Disease:", bg="#303030", fg="white").pack(pady=5)
+Label(sorter_frame, text="Disease:", bg=DARK_BG, fg=DARK_FG).pack(pady=5)
 Entry(sorter_frame, textvariable=disease_var, state='readonly').pack(pady=5)
 
 # Save Button
